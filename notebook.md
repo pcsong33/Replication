@@ -6,8 +6,11 @@ run three instances of the server.py file:
 - `python server.py primary 1538`
 - `python server.py secondary 2538`
 - `python server.py secondary 3538`
+Hasn't been thoroughly tested but seems to work.
 
 Additionally, after a server goes down, once it comes back up, it will load the users from the csv corresponding to it. Possibly some syncing issues, also not sure if we want persistence only when the whole system goes down?
+
+Think I fixed the logging out bug
 
 
 ## 4/8/2023
