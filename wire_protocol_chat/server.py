@@ -222,14 +222,14 @@ class Server:
                         print(port, self.server_sockets[port].active)
 
                     # leader election
-                    if not primary:
+                    if not self.primary:
                         servers = list(self.server_sockets.values())
                         new_primary = min([x.addr if x.active else 3538 for x in servers])
 
-                    # if server port is lowest, it is elected to be primary
-                    if self.port == new_primary:
-                        self.primary = True
-                        print('PRIMARY HERE')
+                        # if server port is lowest, it is elected to be primary
+                        if self.port == new_primary:
+                            self.primary = True
+                            print('PRIMARY HERE')
                     break
 
                 # Unpack data according to wire protocol
