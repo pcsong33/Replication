@@ -225,6 +225,38 @@ class Server:
             receiver_client.disconnect()
             return 1
 
+    def parse_primary_message(self, request):
+        # find client logged into primary server
+        c_name_rec = request.split('|')[-1]
+        c_name = None if c_name_rec == "None" else c_name_rec
+
+        # reform request
+        request = "|".join(request.split('|')[:-1])
+        return c_name, request
+
+    def send_backups_message(self, request, c_name):
+        for port in self.server_sockets:
+            if self.primary and self.server_sockets[port].active:
+                print('sent to port ' + str(port))
+                backup_request = request + "|" + str(c_name)
+                self.server_sockets[port].socket.sendall(backup_request.encode())
+                print('hello')
+
+    def on_server_shutdown(self, addr):
+        if isinstance(addr, int):
+            self.server_sockets[addr].active = False
+            print(f"disconnected from {addr}")
+            if not self.primary:
+                self.leader_election()
+
+    def leader_election(self):
+        # leader election
+        servers = list(self.server_sockets.values())
+        new_primary = min([x.addr if x.active else 3538 for x in servers] + [self.port])
+        # if server port is lowest, it is elected to be primary
+        if self.port == new_primary:
+            self.primary = True
+            print('PRIMARY HERE')
 
     # Threaded execution for each client
     def on_new_client(self, c_socket, addr):
@@ -234,37 +266,21 @@ class Server:
         try:
             while True:
                 request = c_socket.recv(1024).decode()
+                # replica server has shutdown
+                if request == '':
+                    self.on_server_shutdown(addr)
+                    c_socket.close()
+                    break
 
                 # if backup, parse message from primary
                 if not self.primary:
-                    c_name_rec = request.split('|')[-1]
-                    c_name = None if c_name_rec == "None" else c_name_rec
-                    request = "|".join(request.split('|')[:-1])
+                    # assume that no user is logged in
+                    c_name = None
+                    client = None
+                    c_name, request = self.parse_primary_message(request)
                 else:
                     # pass on message to all connected backups
-                    for port in self.server_sockets:
-                        if self.primary and self.server_sockets[port].active:
-                            print('sent to port ' + str(port))
-                            backup_request = request + "|" + str(c_name)
-                            self.server_sockets[port].socket.sendall(backup_request.encode())
-
-                #  replica server has shutdown
-                if request == '' and isinstance(addr, int):
-                    self.server_sockets[addr].active = False
-                    print(f"disconnected from {addr}")
-                    for port in self.server_sockets:
-                        print(port, self.server_sockets[port].active)
-
-                    # leader election
-                    if not self.primary:
-                        servers = list(self.server_sockets.values())
-                        new_primary = min([x.addr if x.active else 3538 for x in servers])
-
-                        # if server port is lowest, it is elected to be primary
-                        if self.port == new_primary:
-                            self.primary = True
-                            print('PRIMARY HERE')
-                    break
+                    self.send_backups_message(request, c_name)
 
                 # Unpack data according to wire protocol
                 op, msg = request.split('|', 1) if '|' in request else (request, '')
@@ -277,9 +293,8 @@ class Server:
 
                     # Successfully created account
                     if status == 0:
-                        if self.primary:
-                            c_name = msg
-                            client = self.users[c_name]
+                        c_name = msg
+                        client = self.users[c_name]
             
                 # Log into existing account
                 elif op == '2':
@@ -287,9 +302,8 @@ class Server:
 
                     # Successfully logged in
                     if status == 0:
-                        if self.primary:
-                            c_name = msg
-                            client = self.users[c_name]
+                        c_name = msg
+                        client = self.users[c_name]
 
                         # Send any undelivered messages 
                         self.send_queued_chats(c_socket, c_name)
@@ -384,6 +398,8 @@ class Server:
             for s_port in backups:
                 t = threading.Thread(target=self.connect_replicas, args=(s_port,))
                 t.start()
+
+            time.sleep(2)
 
             # Load persisted data if exists
             if os.path.isfile(f'users_table_{self.port}.csv'):
