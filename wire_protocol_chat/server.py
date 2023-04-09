@@ -228,8 +228,6 @@ class Server:
                 op, msg = request.split('|', 1) if '|' in request else (request, '')
                 op, msg = op.strip(), msg.strip()
 
-                # print(op, msg)
-
                 # Create an account
                 if op == '1':
                     print('create')
@@ -289,11 +287,11 @@ class Server:
                     break
                 
                 # Logging into new primary server
-                # elif op == '7':
-                #     c_name = msg
-                #     client = self.users[c_name]
-                #     self.users[c_name].set_socket_addr(c_socket, addr)
-                #     self.users[c_name].active = True
+                elif op == '7':
+                    c_name = msg
+                    client = self.users[c_name]
+                    self.users[c_name].set_socket_addr(c_socket, addr)
+                    self.users[c_name].active = True
 
                 # Request was malformed
                 else:

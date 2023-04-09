@@ -65,9 +65,9 @@ class Client:
         self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
         
         # Let new primary server know if logged in
-        # if self.name:
-        #     encoded_request = ('7|' + self.name).encode()
-        #     self.sock.send(encoded_request)
+        if self.name:
+            encoded_request = ('7|' + self.name + '|').encode()
+            self.sock.send(encoded_request)
 
     # Receive exactly k bytes from the server
     def recv_k_bytes(self, k):
