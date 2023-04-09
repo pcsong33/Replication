@@ -42,6 +42,9 @@ TODOs
 and is able to recover data. 
 - Add another secondary (port 3538) to make system 2-fault-tolerant
 - make sure replicas work across machines
+- delete users from user table when user is deleted (we'd prob just have to read and overwrite the entire CSV???)
+- for qued msgs, also seems like there would be expensive deletion operations, which kinda sucks.
+- unit tests
 
 
 ## 4/7/2023
