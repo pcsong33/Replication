@@ -132,7 +132,7 @@ class Server:
             self.users[name] = User(name, c_socket, addr, True)
 
             # log users table in csv file.
-            self.write_user_to_csv(name, addr)
+            self.create_user_in_csv(name, addr)
 
         self.send_msg_to_client(c_socket, 0, 0, f'Account created! Logged in as {name}.')
         print(f'{name} has created an account.')
