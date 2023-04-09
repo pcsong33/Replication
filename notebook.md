@@ -1,5 +1,53 @@
 # CS262 Engineering Notebook
 
+## 4/8/2023
+
+**Current Design**: 1-fault tolerance has been partly implemented. In order to test,
+run two instances of the server.py file:
+- `python server.py primary 1538`
+- `python server.py secondary 2538`
+
+Make sure that the servers are run within 3 seconds of one another. Otherwise, 
+the system won't be fault-tolerant, and will default to the original
+chat implementation. The following measures have been implemented:
+
+- The primary server receives requests from the client and forwards
+those requests to the secondary server.
+- When shutting down the primary server, the secondary server is able
+to become the primary one and handle requests normally.
+- When the secondary server shuts down, the primary server is able to
+continue to field requests.
+
+Bugs
+- When the primary server is shut down while a client is connected and logged in 
+that user becomes logged out
+
+TODOs
+- Handle scenario when both primary and secondary go down.
+- Implement a function that logs queued messages into a csv file
+- Implement a function that is able to read from the user_table and queued_messages csv files
+and is able to recover data. 
+- Add another secondary (port 3538) to make system 2-fault-tolerant
+
+
+
+
+## 4/7/2023
+A couple notes on steps we have taken to implement replication:
+- Added an address re-usability flag in the server code to bypass the "address already in use" error.
+- Created a user_table.csv file. Intended to keep track of all the users. 
+- Created a server_log.csv file. Intended to act as a commit log that tracks all changes that occur
+for a server. In theory, a log will be added to the primary backup's commit log only when the action has
+been approved by the other replicas.
+
+##### Next Steps
+- Establish secondary backups. Workflow should resemble:
+  - Client makes a request to the primary server. 
+  - Primary server passes on request to the secondary servers.
+  - Secondary servers add action to commit logs, and send confirmation back to the primary
+  - Primary sends a confirmation request back to the client
+
+
 ## 4/3/2023
 
 Initial steps have been to copy over code from the Wire Protocol project to the Replication repository. For this project, we aim to implement

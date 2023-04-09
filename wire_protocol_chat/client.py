@@ -31,6 +31,7 @@ class Client:
         self.sock = socket.socket()
         self.host = host
         self.port = port
+        self.ports = [1538, 2538]
 
     # Prints out the instructions for how the user should format requests to use the chat application
     def print_intro_message(self):
@@ -47,7 +48,13 @@ class Client:
         print('- exit --> Exit the chat application')
 
         print(' --------------------------------------------------------------------------------------------------------------------')
-    
+
+    # Connect to backup port if primary is down. Currently, only tries to connect to port 2538
+    def connect_to_backup(self):
+        self.sock.close()
+        self.sock = socket.socket()
+        self.sock.connect((self.host, self.ports[1]))
+
     # Receive exactly k bytes from the server
     def recv_k_bytes(self, k):
         bytes_recd = 0
@@ -57,7 +64,12 @@ class Client:
             next_recv = self.sock.recv(k - bytes_recd).decode()
 
             if next_recv == '':
-                raise RuntimeError("Server connection broken.")
+                # TODO: change function to attempt to connect to all servers before giving all servers down message
+                self.connect_to_backup()
+
+                print("All servers are down. Attempting to reconnect in 5 seconds.")
+                # raise RuntimeError("Server connection broken.")
+
 
             bytes_recd += len(next_recv)
             msg += next_recv
@@ -145,7 +157,16 @@ class Client:
 
         print(f'\nTrying to connect to {self.host} ({self.port})\n')
         time.sleep(1)
-        self.sock.connect((self.host, self.port))
+
+        # connect to default port 1538
+        try:
+            self.sock.connect((self.host, self.port))
+            print(self.port)
+
+        # attempt to connect to backup port 2538
+        except ConnectionRefusedError:
+            self.connect_to_backup()
+
         print('Connected...\n')
 
         background_thread = Thread(target=self.print_messages_from_server)

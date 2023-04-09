@@ -1,6 +1,9 @@
 import socket
 import fnmatch
 import threading
+import csv
+import sys
+import time
 
 '''
 A User object represents an account that is created. It keeps track of the username, whether the user 
@@ -43,24 +46,33 @@ The Server object accepts connections from multiple clients, and listens to clie
 to respond and pass chat messages between clients. It keeps a global dictionary of all User objects.
 '''
 class Server:
-    def __init__(self, port=1538):
+    def __init__(self, primary=True, port=1538):
         self.port = port
+
+        # TODO: add another port (3538) to make 2-fault-tolerant
+        self.server_ports = {1538, 2538} - {port}
+
+        # can maybe utilize User object instead of dict
+        self.server_sockets = dict()
         self.s = socket.socket()
         self.host = socket.gethostname()
         self.ip = socket.gethostbyname(self.host)
         self.users = {}
         self.lock = threading.Lock()
+        self.primary = primary
 
     # Package and send messages from server to client according to wire protocol
     def send_msg_to_client(self, c_socket, status, is_chat, msg):
-        msg_len = len(msg)
-        data = chr(msg_len) + chr(status) + str(is_chat) + msg
-        c_socket.sendall(data.encode())
+        # Only send messages to the client if you are the primary server
+        if self.primary:
+            msg_len = len(msg)
+            data = chr(msg_len) + chr(status) + str(is_chat) + msg
+            c_socket.sendall(data.encode())
             
     # Op 1 - Create Account
-    def create_account(self, client, c_socket, c_name, addr, name):
+    def create_account(self, c_socket, c_name, addr, name):
         # Client is already logged in
-        if client:
+        if c_name:
             self.send_msg_to_client(c_socket, 1, 0, f'Unable to create account: You are already logged in as {c_name}. Please exit and start a new client to log into a different account.')
             return 1
         
@@ -73,14 +85,19 @@ class Server:
             # Register user - create new User object
             self.users[name] = User(name, c_socket, addr)
 
+            # log users table in csv file. TODO: create a function that creates users dictionary from csv on startup.
+            with open('user_table.csv', 'a') as f:
+                csv.writer(f).writerow([name, addr])
+                f.close()
+
         self.send_msg_to_client(c_socket, 0, 0, f'Account created! Logged in as {name}.')
         print(f'{name} has created an account.')
         return 0
 
     # Op 2 - Login
-    def login(self, client, c_socket, c_name, addr, name):
+    def login(self, c_socket, c_name, addr, name):
         # Client is already logged in
-        if client:
+        if c_name:
             self.send_msg_to_client(c_socket, 1, 0, f'Unable to login: You are already logged in as {c_name}. Please exit  and start a new client to log into a different account.')
             return 1
 
@@ -103,7 +120,8 @@ class Server:
         return 0
 
     # Upon login, send messages user missed
-    def send_queued_chats(self, client, c_socket, c_name):
+    def send_queued_chats(self, c_socket, c_name):
+        client = self.users[c_name]
         total_msgs = len(client.msgs)
 
         # No new messages
@@ -124,9 +142,9 @@ class Server:
         client.clear_msgs()
 
     # Op 3 - Send chat messages from client to client
-    def send_chat(self, client, c_socket, c_name, receiver, msg):
+    def send_chat(self, c_socket, c_name, receiver, msg):
         # Must be logged in
-        if not client:
+        if not c_name:
             self.send_msg_to_client(c_socket, 1, 0, 'Must be logged in to perform this operation. Please login or create an account.')
             return 1
 
@@ -169,36 +187,59 @@ class Server:
             while True:
                 request = c_socket.recv(1024).decode()
 
+                # if backup, parse message from primary
+                if not self.primary:
+                    c_name_rec = request.split('|')[-1]
+                    c_name = None if c_name_rec == "None" else c_name_rec
+                    request = "|".join(request.split('|')[:-1])
+                else:
+                    # pass on message to all connected backups
+                    for port in self.server_sockets:
+                        if self.primary and self.server_sockets[port].active:
+                            print('sent to port ' + str(port))
+                            backup_request = request + "|" + str(c_name)
+                            self.server_sockets[port].socket.sendall(backup_request.encode())
+
+                # server has shutdown TODO: implement leader election for 2 backups
+                if request == '' and isinstance(addr, int):
+                    self.primary = True
+                    self.server_sockets[addr].active = False
+                    print(f"disconnected from {addr}")
+                    break
+
                 # Unpack data according to wire protocol
                 op, msg = request.split('|', 1) if '|' in request else (request, '')
                 op, msg = op.strip(), msg.strip()
 
                 # Create an account
                 if op == '1':
-                    status = self.create_account(client, c_socket, c_name, addr, msg)
+                    print('create')
+                    status = self.create_account(c_socket, c_name, addr, msg)
 
                     # Successfully created account
                     if status == 0:
-                        c_name = msg
-                        client = self.users[c_name]
+                        if self.primary:
+                            c_name = msg
+                            client = self.users[c_name]
             
                 # Log into existing account
                 elif op == '2':
-                    status = self.login(client, c_socket, c_name, addr, msg)
+                    status = self.login(c_socket, c_name, addr, msg)
 
                     # Successfully logged in
                     if status == 0:
-                        c_name = msg
-                        client = self.users[c_name]
+                        if self.primary:
+                            c_name = msg
+                            client = self.users[c_name]
 
                         # Send any undelivered messages 
-                        self.send_queued_chats(client, c_socket, c_name)
+                        self.send_queued_chats(c_socket, c_name)
 
                 # Send message to another client
                 elif op == '3':
                     msg = msg.split('|', 1)
                     receiver, msg = msg[0].strip(), msg[1].strip()
-                    self.send_chat(client, c_socket, c_name, receiver, msg)
+                    self.send_chat(c_socket, c_name, receiver, msg)
 
                 # List accounts
                 elif op == '4':
@@ -225,33 +266,58 @@ class Server:
                     client = None
 
                 # Exit the chat
-                elif op == '6':
+                elif op == '6' and self.primary:
                     break
                 
                 # Request was malformed
                 else:
                     self.send_msg_to_client(c_socket, 1, 0, 'Invalid operation. Please input your request as [operation]|[params].')
             
-            if (client):
+            if client and self.primary:
                 print(f'\n[-] {c_name} has left. Disconnecting client.\n')
                 client.disconnect()
 
         # Handle client disconnect if unexpected broken connection (e.g. ctrl+c)
         except (BrokenPipeError, ConnectionResetError) as e:
-            if (client):
+            if client:
                 print(f'\n[-] Connection with {c_name} has broken. Disconnecting client.\n')
                 client.disconnect()
+
+    def connect_replicas(self, s_port):
+        try:
+            sock = socket.socket()
+            sock.connect((self.host, s_port))
+            self.server_sockets[s_port] = User(s_port, sock)
+            print(f'\nConnected with backup on port {s_port}!')
+            t = threading.Thread(target=self.on_new_client, args=(sock, s_port))
+            t.start()
+        except ConnectionRefusedError:
+            print(f"\nUnable to connect with backup on port {s_port}")
 
     # Main execution for starting server and listening for connections
     def start_server(self):
         try: 
             # Print out host/IP
-            print(f'\n{self.host} ({self.ip})')
+            print(f'\n{self.host} ({self.port})')
+
+            # Allow address reuse
+            self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
             # Bind socket to port
             self.s.bind((self.host, self.port))
 
             print('\nServer started!')
+            # Sleep before connecting with backups
+            backups = self.server_ports - {self.port}
+            print('\nWaiting to connect with backups...')
+
+            # Fault-tolerant system is created if backups are run within 3 seconds of the primary starting up
+            time.sleep(3)
+
+            for s_port in backups:
+                t = threading.Thread(target=self.connect_replicas, args=(s_port,))
+                t.start()
+
 
             # Listen for client connections
             self.s.listen(5)
@@ -275,6 +341,13 @@ class Server:
 
             self.s.close()
 
+
 if __name__ == "__main__":
-    server = Server()
+    primary = True
+    port = 1538
+    if len(sys.argv) > 2:
+        if sys.argv[1] == 'secondary':
+            primary = False
+        port = int(sys.argv[2])
+    server = Server(primary, port)
     server.start_server()
