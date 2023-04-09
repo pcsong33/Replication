@@ -1,8 +1,9 @@
 import time, socket
 from threading import Thread
 
-# Change this below to match the server host
-HOST = 'dhcp-10-250-0-195.harvard.edu'
+# Change this below to match the server hosts / ports
+HOSTS = ['dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu']
+PORTS = [1538, 2538, 3538]
 
 ## Wire Protocol Constants ##
 
@@ -27,11 +28,12 @@ The Client object connects to the server running the chat application. It listen
 the server. It also takes in requests from the user via command-line input to be sent to the server.
 '''
 class Client:
-    def __init__(self, host=HOST, port=1538):
+    def __init__(self, ports=PORTS, hosts=HOSTS):
         self.sock = socket.socket()
-        self.host = host
-        self.port = port
-        self.ports = [1538, 2538]
+        self.primary_idx = 0
+        self.hosts = hosts
+        self.ports = ports
+        self.name = None
 
     # Prints out the instructions for how the user should format requests to use the chat application
     def print_intro_message(self):
@@ -51,9 +53,21 @@ class Client:
 
     # Connect to backup port if primary is down. Currently, only tries to connect to port 2538
     def connect_to_backup(self):
+        if self.primary_idx >= 2:
+            # TODO: change function to attempt to connect to all servers before giving all servers down message -- do we actually want to attempt to reconnect?
+            print("All servers are down. Attempting to reconnect in 5 seconds.") 
+            raise RuntimeError("Server connection broken.")
+
+        # Leader election = lowest index server
+        self.primary_idx += 1
         self.sock.close()
         self.sock = socket.socket()
-        self.sock.connect((self.host, self.ports[1]))
+        self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
+        
+        # Let new primary server know if logged in
+        # if self.name:
+        #     encoded_request = ('7|' + self.name).encode()
+        #     self.sock.send(encoded_request)
 
     # Receive exactly k bytes from the server
     def recv_k_bytes(self, k):
@@ -63,13 +77,9 @@ class Client:
         while bytes_recd < k:
             next_recv = self.sock.recv(k - bytes_recd).decode()
 
+            # Primary server connection broken
             if next_recv == '':
-                # TODO: change function to attempt to connect to all servers before giving all servers down message
                 self.connect_to_backup()
-
-                print("All servers are down. Attempting to reconnect in 5 seconds.")
-                # raise RuntimeError("Server connection broken.")
-
 
             bytes_recd += len(next_recv)
             msg += next_recv
@@ -101,6 +111,13 @@ class Client:
             else:
                 if status == 0:
                     print(f'\nSUCCESS: {msg}\n')
+
+                    if 'Logged in as' in msg:
+                        self.name = msg.split(' ')[-1].strip('.')
+
+                    if 'You are now logged out' in msg:
+                        self.name = None
+
                 elif status == 1:
                     print(f'\nERROR: {msg}\n')
                 elif status == 2:
@@ -155,15 +172,14 @@ class Client:
         print('Initialising....\n')
         time.sleep(1)
 
-        print(f'\nTrying to connect to {self.host} ({self.port})\n')
+        print(f'\nTrying to connect to {self.hosts[self.primary_idx]} ({self.ports[self.primary_idx]})\n')
         time.sleep(1)
 
         # connect to default port 1538
         try:
-            self.sock.connect((self.host, self.port))
-            print(self.port)
+            self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
 
-        # attempt to connect to backup port 2538
+        # attempt to connect to backup
         except ConnectionRefusedError:
             self.connect_to_backup()
 

@@ -4,17 +4,18 @@ import threading
 import csv
 import sys
 import time
+import os.path
 
 '''
 A User object represents an account that is created. It keeps track of the username, whether the user 
 is active or not, the client socket logged into the account, and the undelivered messages to the user.
 '''
 class User:
-    def __init__(self, name, socket=None, addr=None):
+    def __init__(self, name, socket=None, addr=None, active=False):
         self.name = name
         self.socket = socket
         self.addr = addr
-        self.active = True
+        self.active = active
         self.msgs = []
         self.lock = threading.Lock()
     
@@ -48,9 +49,7 @@ to respond and pass chat messages between clients. It keeps a global dictionary 
 class Server:
     def __init__(self, primary=True, port=1538):
         self.port = port
-
-        # TODO: add another port (3538) to make 2-fault-tolerant
-        self.server_ports = {1538, 2538} - {port}
+        self.server_ports = {1538, 2538, 3538} - {port}
 
         # can maybe utilize User object instead of dict
         self.server_sockets = dict()
@@ -68,6 +67,23 @@ class Server:
             msg_len = len(msg)
             data = chr(msg_len) + chr(status) + str(is_chat) + msg
             c_socket.sendall(data.encode())
+    
+    def write_user_to_csv(self, name, addr): # TODO: need to store more info than this? need store addr? need file unique to port?
+        with open(f'user_table_{self.port}.csv', 'a') as csv_file:
+            csv.writer(csv_file).writerow([name, addr])
+
+    def load_users_from_csv(self):
+        users = {}
+
+        with open(f'user_table_{self.port}.csv', 'r') as csv_file:
+            for line in csv_file:
+                line = line.strip('\n').split(',')
+                name = line[0]
+                addr = tuple(line[1].strip('\"').split(','))
+                users[name] = User(name)
+
+        return users
+
             
     # Op 1 - Create Account
     def create_account(self, c_socket, c_name, addr, name):
@@ -83,12 +99,10 @@ class Server:
                 return 1
             
             # Register user - create new User object
-            self.users[name] = User(name, c_socket, addr)
+            self.users[name] = User(name, c_socket, addr, True)
 
             # log users table in csv file. TODO: create a function that creates users dictionary from csv on startup.
-            with open('user_table.csv', 'a') as f:
-                csv.writer(f).writerow([name, addr])
-                f.close()
+            self.write_user_to_csv(name, addr)
 
         self.send_msg_to_client(c_socket, 0, 0, f'Account created! Logged in as {name}.')
         print(f'{name} has created an account.')
@@ -180,10 +194,10 @@ class Server:
 
     # Threaded execution for each client
     def on_new_client(self, c_socket, addr):
-        try:
-            c_name = None
-            client = None
+        c_name = None
+        client = None
 
+        try:
             while True:
                 request = c_socket.recv(1024).decode()
 
@@ -200,9 +214,12 @@ class Server:
                             backup_request = request + "|" + str(c_name)
                             self.server_sockets[port].socket.sendall(backup_request.encode())
 
-                # server has shutdown TODO: implement leader election for 2 backups
+                # primary server has shutdown
                 if request == '' and isinstance(addr, int):
-                    self.primary = True
+                    if self.port - addr == 1000: # TODO jank af lol
+                        self.primary = True
+                        print('PRIMARY HERE')
+                    
                     self.server_sockets[addr].active = False
                     print(f"disconnected from {addr}")
                     break
@@ -210,6 +227,8 @@ class Server:
                 # Unpack data according to wire protocol
                 op, msg = request.split('|', 1) if '|' in request else (request, '')
                 op, msg = op.strip(), msg.strip()
+
+                # print(op, msg)
 
                 # Create an account
                 if op == '1':
@@ -269,6 +288,13 @@ class Server:
                 elif op == '6' and self.primary:
                     break
                 
+                # Logging into new primary server
+                # elif op == '7':
+                #     c_name = msg
+                #     client = self.users[c_name]
+                #     self.users[c_name].set_socket_addr(c_socket, addr)
+                #     self.users[c_name].active = True
+
                 # Request was malformed
                 else:
                     self.send_msg_to_client(c_socket, 1, 0, 'Invalid operation. Please input your request as [operation]|[params].')
@@ -287,12 +313,12 @@ class Server:
         try:
             sock = socket.socket()
             sock.connect((self.host, s_port))
-            self.server_sockets[s_port] = User(s_port, sock)
-            print(f'\nConnected with backup on port {s_port}!')
+            self.server_sockets[s_port] = User(s_port, sock, active=True)
+            print(f'\nConnected with replica on port {s_port}!')
             t = threading.Thread(target=self.on_new_client, args=(sock, s_port))
             t.start()
         except ConnectionRefusedError:
-            print(f"\nUnable to connect with backup on port {s_port}")
+            print(f"\nUnable to connect with replica on port {s_port}")
 
     # Main execution for starting server and listening for connections
     def start_server(self):
@@ -308,8 +334,8 @@ class Server:
 
             print('\nServer started!')
             # Sleep before connecting with backups
-            backups = self.server_ports - {self.port}
-            print('\nWaiting to connect with backups...')
+            backups = self.server_ports
+            print('\nWaiting to connect with replicas...')
 
             # Fault-tolerant system is created if backups are run within 3 seconds of the primary starting up
             time.sleep(3)
@@ -318,6 +344,9 @@ class Server:
                 t = threading.Thread(target=self.connect_replicas, args=(s_port,))
                 t.start()
 
+            # Load persisted data if exists
+            if os.path.isfile(f'user_table_{self.port}.csv'):
+                self.users = self.load_users_from_csv()
 
             # Listen for client connections
             self.s.listen(5)
