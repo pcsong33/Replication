@@ -68,22 +68,52 @@ class Server:
             data = chr(msg_len) + chr(status) + str(is_chat) + msg
             c_socket.sendall(data.encode())
     
-    def write_user_to_csv(self, name, addr): # TODO: need to store more info than this? need store addr? need file unique to port?
-        with open(f'user_table_{self.port}.csv', 'a') as csv_file:
-            csv.writer(csv_file).writerow([name, addr])
+    def create_user_in_csv(self, name, addr): # TODO: need to store more info than this? need store addr? need file unique to port?
+        with open(f'users_table_{self.port}.csv', 'a') as csv_file:
+            csv.writer(csv_file).writerow(['create', name, addr])
+
+    def delete_user_in_csv(self, name):
+        with open(f'users_table_{self.port}.csv', 'a') as csv_file:
+            csv.writer(csv_file).writerow(['delete', name])
 
     def load_users_from_csv(self):
         users = {}
 
-        with open(f'user_table_{self.port}.csv', 'r') as csv_file:
+        with open(f'users_table_{self.port}.csv', 'r') as csv_file:
             for line in csv_file:
                 line = line.strip('\n').split(',')
-                name = line[0]
-                addr = tuple(line[1].strip('\"').split(','))
-                users[name] = User(name)
+                name = line[1]
+                # addr = tuple(line[2].strip('\"').split(','))
+
+                if line[0] == 'create':
+                    users[name] = User(name)
+                elif line[0] == 'delete':
+                    users.pop(name)
 
         return users
+    
+    def queue_msg_in_csv(self, receiver, sender, msg):
+        with open(f'msgs_table_{self.port}.csv', 'a') as csv_file:
+            csv.writer(csv_file).writerow(['queue', receiver, sender, msg])
 
+    def clear_msgs_in_csv(self, name):
+        with open(f'msgs_table_{self.port}.csv', 'a') as csv_file:
+            csv.writer(csv_file).writerow(['clear', name])
+
+    def load_msgs_from_csv(self):
+        with open(f'msgs_table_{self.port}.csv', 'r') as csv_file:
+             for line in csv_file:
+                line = line.strip('\n').split(',')
+                receiver = line[1]
+
+                if receiver not in self.users:
+                    continue
+
+                if line[0] == 'queue':
+                    sender, msg = line[2], line[3]
+                    self.users[receiver].queue_msg(sender, msg)
+                elif line[0] == 'clear':
+                    self.users[receiver].clear_msgs()
             
     # Op 1 - Create Account
     def create_account(self, c_socket, c_name, addr, name):
@@ -101,7 +131,7 @@ class Server:
             # Register user - create new User object
             self.users[name] = User(name, c_socket, addr, True)
 
-            # log users table in csv file. TODO: create a function that creates users dictionary from csv on startup.
+            # log users table in csv file.
             self.write_user_to_csv(name, addr)
 
         self.send_msg_to_client(c_socket, 0, 0, f'Account created! Logged in as {name}.')
@@ -154,6 +184,7 @@ class Server:
 
         self.send_msg_to_client(c_socket, 2, 0, f'You have {total_msgs} missed messages above.')
         client.clear_msgs()
+        self.clear_msgs_in_csv(c_name)
 
     # Op 3 - Send chat messages from client to client
     def send_chat(self, c_socket, c_name, receiver, msg):
@@ -175,8 +206,11 @@ class Server:
         # Queue message if receiver inactive
         if not receiver_client.active:
             receiver_client.queue_msg(c_name, msg)
+            self.queue_msg_in_csv(receiver, c_name, msg)
+
             self.send_msg_to_client(c_socket, 0, 0, f'Message sent to {receiver}.')
             print(f'{c_name} queued {msg} to {receiver}')
+
             return 0
 
         # Send message on demand if active
@@ -284,6 +318,7 @@ class Server:
                     
                     with self.lock:
                         self.users.pop(c_name)
+                        self.delete_user_in_csv(c_name)
                         self.send_msg_to_client(c_socket, 0, 0, f'Account {c_name} has been deleted. You are now logged out.')
 
                     print(f'{c_name} has deleted their account.')
@@ -318,7 +353,7 @@ class Server:
     def connect_replicas(self, s_port):
         try:
             sock = socket.socket()
-            sock.connect((self.host, s_port))
+            sock.connect((self.host, s_port)) # TODO: fix to diff host
             self.server_sockets[s_port] = User(s_port, sock, active=True, addr=s_port)
             print(f'\nConnected with replica on port {s_port}!')
             t = threading.Thread(target=self.on_new_client, args=(sock, s_port))
@@ -351,8 +386,11 @@ class Server:
                 t.start()
 
             # Load persisted data if exists
-            if os.path.isfile(f'user_table_{self.port}.csv'):
+            if os.path.isfile(f'users_table_{self.port}.csv'):
                 self.users = self.load_users_from_csv()
+            if os.path.isfile(f'msgs_table_{self.port}.csv'):
+                self.load_msgs_from_csv()
+                
 
             # Listen for client connections
             self.s.listen(5)
