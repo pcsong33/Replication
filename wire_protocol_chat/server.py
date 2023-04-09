@@ -214,14 +214,22 @@ class Server:
                             backup_request = request + "|" + str(c_name)
                             self.server_sockets[port].socket.sendall(backup_request.encode())
 
-                # primary server has shutdown
+                #  replica server has shutdown
                 if request == '' and isinstance(addr, int):
-                    if self.port - addr == 1000: # TODO jank af lol
-                        self.primary = True
-                        print('PRIMARY HERE')
-                    
                     self.server_sockets[addr].active = False
                     print(f"disconnected from {addr}")
+                    for port in self.server_sockets:
+                        print(port, self.server_sockets[port].active)
+
+                    # leader election
+                    if not primary:
+                        servers = list(self.server_sockets.values())
+                        new_primary = min([x.addr if x.active else 3538 for x in servers])
+
+                    # if server port is lowest, it is elected to be primary
+                    if self.port == new_primary:
+                        self.primary = True
+                        print('PRIMARY HERE')
                     break
 
                 # Unpack data according to wire protocol
@@ -311,7 +319,7 @@ class Server:
         try:
             sock = socket.socket()
             sock.connect((self.host, s_port))
-            self.server_sockets[s_port] = User(s_port, sock, active=True)
+            self.server_sockets[s_port] = User(s_port, sock, active=True, addr=s_port)
             print(f'\nConnected with replica on port {s_port}!')
             t = threading.Thread(target=self.on_new_client, args=(sock, s_port))
             t.start()

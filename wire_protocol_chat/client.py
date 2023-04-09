@@ -2,7 +2,7 @@ import time, socket
 from threading import Thread
 
 # Change this below to match the server hosts / ports
-HOSTS = ['dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu']
+HOSTS = ['dhcp-10-250-0-195.harvard.edu', 'dhcp-10-250-0-195.harvard.edu', 'dhcp-10-250-0-195.harvard.edu']
 PORTS = [1538, 2538, 3538]
 
 ## Wire Protocol Constants ##
@@ -53,21 +53,25 @@ class Client:
 
     # Connect to backup port if primary is down. Currently, only tries to connect to port 2538
     def connect_to_backup(self):
-        if self.primary_idx >= 2:
-            # TODO: change function to attempt to connect to all servers before giving all servers down message -- do we actually want to attempt to reconnect?
-            print("All servers are down. Attempting to reconnect in 5 seconds.") 
+        for _ in range(3):
+            # Leader election find lowest index server that is available
+            self.primary_idx += 1
+            self.primary_idx %= 3
+            self.sock.close()
+            self.sock = socket.socket()
+            try:
+                self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
+                # Let new primary server know if logged in
+                if self.name:
+                    print(self.name)
+                    encoded_request = ('7|' + self.name + '|').encode()
+                    self.sock.send(encoded_request)
+                    break
+            except ConnectionRefusedError:
+                continue
+        else:
+            print("All servers are down. Attempting to reconnect in 5 seconds.")
             raise RuntimeError("Server connection broken.")
-
-        # Leader election = lowest index server
-        self.primary_idx += 1
-        self.sock.close()
-        self.sock = socket.socket()
-        self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
-        
-        # Let new primary server know if logged in
-        if self.name:
-            encoded_request = ('7|' + self.name + '|').encode()
-            self.sock.send(encoded_request)
 
     # Receive exactly k bytes from the server
     def recv_k_bytes(self, k):
