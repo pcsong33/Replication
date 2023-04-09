@@ -1,5 +1,15 @@
 # CS262 Engineering Notebook
 
+## 4/9/2023
+2-fault tolerance has been partly implemented. In order to test,
+run three instances of the server.py file:
+- `python server.py primary 1538`
+- `python server.py secondary 2538`
+- `python server.py secondary 3538`
+
+Additionally, after a server goes down, once it comes back up, it will load the users from the csv corresponding to it. Possibly some syncing issues, also not sure if we want persistence only when the whole system goes down?
+
+
 ## 4/8/2023
 
 **Current Design**: 1-fault tolerance has been partly implemented. In order to test,
@@ -28,8 +38,7 @@ TODOs
 - Implement a function that is able to read from the user_table and queued_messages csv files
 and is able to recover data. 
 - Add another secondary (port 3538) to make system 2-fault-tolerant
-
-
+- make sure replicas work across machines
 
 
 ## 4/7/2023
