@@ -48,11 +48,7 @@ Responses from the server to a client are sent in the form `[message length][sta
     * Connects to the primary server.
     * Runs a background thread to listen for and print messages from the server.
     * Takes in requests from the user via command-line input, which is packaged according to the wire protocol and sent to the server.
-* `replication-tests.py` - Unit tests. Run via `python3 replication-tests.py`. These tests are for testing the specific features/functions we added in this design assignment.
-* `tests.py` - More unit tests. To run the tests, you must 1) run `server.py`, 2) change `HOST` in `tests.py` and `HOSTS` in `client.py` to match the server, and finally 3) run `python3 tests.py`
-    * These tests are from our original assignment, which tests the functionality of the chat application itself.
-    * The tests spawn `Client` objects connected to the server. These objects send requests to the server within the tests, and the tests check whether the responses from the server are as expected.
-    * If a `Too many open files` error is received when running tests, run `ulimit -n 2048` to reconfigure the maximum number of open files.
+* `replication-tests.py` - Unit tests. Run via `python3 replication-tests.py`. These tests are for testing the specific features/functions we added in this design assignment to the application.
 
 ### Fault Tolerance
 
@@ -80,4 +76,4 @@ Any time a request is received by a server that creates or deletes a user, this 
 
 Similarly, any time a request is received that queues a message to a user or clears the queued messages for a user (i.e. the user logs in), this request is logged in the `msgs_table_[port].csv` file in the `tables/` directory by the server. These queued messages are also loaded upon initialization. The lines in the CSV are formatted as `queue,[receiver],[sender],[message]` or `clear,[receiver]`. For example, if the file lines are `queue,bob,alice,hi`, `queue,bob,alice,hello`, `queue,alice,joe,what's up`, `clear,alice`, then the queued messages that will be loaded into the server's initial state are two messages queued to bob from alice ("hi" and "hello"). 
 
-Keeping these "commit log" tables and loading the commits in upon initialization allow our user and message store to be persisted, even if the whole system goes down and is restarted again. Conceptually, these tables serve as a backup for our server's current internal state.
+Keeping these "commit log" tables and loading the commits in upon initialization allow our user and message store to be persisted, even if the whole system goes down and is restarted again. Conceptually, these tables serve as a backup for our server's current internal state that allows us to repopoulate the data if the server goes down.
