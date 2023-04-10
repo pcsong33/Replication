@@ -6,6 +6,8 @@ import sys
 import time
 import os.path
 
+DIR = 'tables'
+
 '''
 A User object represents an account that is created. It keeps track of the username, whether the user 
 is active or not, the client socket logged into the account, and the undelivered messages to the user.
@@ -69,17 +71,17 @@ class Server:
             c_socket.sendall(data.encode())
     
     def create_user_in_csv(self, name, addr): # TODO: need to store more info than this? need store addr? need file unique to port?
-        with open(f'users_table_{self.port}.csv', 'a') as csv_file:
+        with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['create', name, addr])
 
     def delete_user_in_csv(self, name):
-        with open(f'users_table_{self.port}.csv', 'a') as csv_file:
+        with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['delete', name])
 
     def load_users_from_csv(self):
         users = {}
 
-        with open(f'users_table_{self.port}.csv', 'r') as csv_file:
+        with open(f'{DIR}/users_table_{self.port}.csv', 'r') as csv_file:
             for line in csv_file:
                 line = line.strip('\n').split(',')
                 name = line[1]
@@ -93,16 +95,16 @@ class Server:
         return users
     
     def queue_msg_in_csv(self, receiver, sender, msg):
-        with open(f'msgs_table_{self.port}.csv', 'a') as csv_file:
+        with open(f'{DIR}/msgs_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['queue', receiver, sender, msg])
 
     def clear_msgs_in_csv(self, name):
-        with open(f'msgs_table_{self.port}.csv', 'a') as csv_file:
+        with open(f'{DIR}/msgs_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['clear', name])
 
     def load_msgs_from_csv(self):
-        with open(f'msgs_table_{self.port}.csv', 'r') as csv_file:
-             for line in csv_file:
+        with open(f'{DIR}/msgs_table_{self.port}.csv', 'r') as csv_file:
+            for line in csv_file:
                 line = line.strip('\n').split(',')
                 receiver = line[1]
 
@@ -399,12 +401,10 @@ class Server:
                 t = threading.Thread(target=self.connect_replicas, args=(s_port,))
                 t.start()
 
-            time.sleep(2)
-
             # Load persisted data if exists
-            if os.path.isfile(f'users_table_{self.port}.csv'):
+            if os.path.isfile(f'{DIR}/users_table_{self.port}.csv'):
                 self.users = self.load_users_from_csv()
-            if os.path.isfile(f'msgs_table_{self.port}.csv'):
+            if os.path.isfile(f'{DIR}/msgs_table_{self.port}.csv'):
                 self.load_msgs_from_csv()
                 
 

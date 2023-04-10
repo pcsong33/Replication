@@ -2,7 +2,7 @@ import time, socket
 from threading import Thread
 
 # Change this below to match the server hosts / ports
-HOSTS = ['dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu', 'dhcp-10-250-224-250.harvard.edu']
+HOSTS = ['dhcp-10-250-0-195.harvard.edu', 'dhcp-10-250-0-195.harvard.edu', 'dhcp-10-250-0-195.harvard.edu']
 PORTS = [1538, 2538, 3538]
 
 ## Wire Protocol Constants ##
@@ -63,10 +63,9 @@ class Client:
                 self.sock.connect((self.hosts[self.primary_idx], self.ports[self.primary_idx]))
                 # Let new primary server know if logged in
                 if self.name:
-                    print(self.name)
                     encoded_request = ('7|' + self.name + '|').encode()
                     self.sock.send(encoded_request)
-                    break
+                break
             except ConnectionRefusedError:
                 continue
         else:
