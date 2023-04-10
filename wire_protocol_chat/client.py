@@ -2,9 +2,9 @@ import time, socket
 from threading import Thread
 
 # Change this below to match the server hosts / ports
-HOSTS = ['dhcp-10-250-0-195.harvard.edu', 
+HOSTS = ['dhcp-10-250-224-250.harvard.edu', 
          'dhcp-10-250-224-250.harvard.edu', 
-         'dhcp-10-250-0-195.harvard.edu']
+         'dhcp-10-250-224-250.harvard.edu']
 PORTS = [1538, 2538, 3538]
 
 ## Wire Protocol Constants ##

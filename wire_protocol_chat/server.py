@@ -9,9 +9,9 @@ import os.path
 DIR = 'tables'
 PORTS = {1538, 2538, 3538}
 PORT_TO_HOST = {
-    1538: 'dhcp-10-250-0-195.harvard.edu',
+    1538: 'dhcp-10-250-224-250.harvard.edu',
     2538: 'dhcp-10-250-224-250.harvard.edu',
-    3538: 'dhcp-10-250-0-195.harvard.edu'
+    3538: 'dhcp-10-250-224-250.harvard.edu'
 }
 
 '''
@@ -227,10 +227,18 @@ class Server:
             self.send_msg_to_client(c_socket, 0, 0, f'Message sent to {receiver}.')
             print(f'{c_name} sent {msg} to {receiver}')
             return 0
-        except BrokenPipeError:
+        # Handle case where receiver unexpectedly died
+        except:
             self.send_msg_to_client(c_socket, 1, 0, f'Message could not be sent to {receiver}. Please try again.')
             print(f'\n[-] Connection with {receiver_client.name} has broken. Disconnecting client.\n')
+            
             receiver_client.disconnect()
+            
+            # Tell backups that the receiver client died
+            if self.primary and receiver:
+                print(receiver)
+                self.send_backups_message('6', receiver)
+
             return 1
 
     def parse_primary_message(self, request):
@@ -248,7 +256,6 @@ class Server:
                 print('sent to port ' + str(port))
                 backup_request = request + "|" + str(c_name)
                 self.server_sockets[port].socket.sendall(backup_request.encode())
-                print('hello')
 
     def on_server_shutdown(self, addr):
         if isinstance(addr, int):
@@ -348,8 +355,17 @@ class Server:
                     client = None
 
                 # Exit the chat
-                elif op == '6' and self.primary:
-                    break
+                elif op == '6':
+                    # Deactivate the client
+                    if c_name:
+                        print(f'\n[-] {c_name} has left. Disconnecting client.\n')
+                        self.users[c_name].active = False
+
+                    # Remove connection if primary
+                    if self.primary:
+                        if client:
+                            client.disconnect()
+                        break
                 
                 # Logging into new primary server
                 elif op == '7':
@@ -362,9 +378,6 @@ class Server:
                 else:
                     self.send_msg_to_client(c_socket, 1, 0, 'Invalid operation. Please input your request as [operation]|[params].')
             
-            if client and self.primary:
-                print(f'\n[-] {c_name} has left. Disconnecting client.\n')
-                client.disconnect()
 
         # Handle client disconnect if unexpected broken connection (e.g. ctrl+c)
         except (BrokenPipeError, ConnectionResetError) as e:
