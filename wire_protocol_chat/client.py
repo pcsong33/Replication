@@ -71,7 +71,7 @@ class Client:
             except ConnectionRefusedError:
                 continue
         else:
-            print("All servers are down. Attempting to reconnect in 5 seconds.")
+            print("All servers are down. Please reconnect at a later time.")
             raise RuntimeError("Server connection broken.")
 
     # Receive exactly k bytes from the server
