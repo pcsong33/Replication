@@ -10,7 +10,7 @@ DIR = 'tables'
 PORTS = {1538, 2538, 3538}
 PORT_TO_HOST = {
     1538: 'dhcp-10-250-0-195.harvard.edu',
-    2538: 'dhcp-10-250-224-250.harvard.edu',
+    2538: 'dhcp-10-250-0-195.harvard.edu',
     3538: 'dhcp-10-250-0-195.harvard.edu'
 }
 
@@ -75,7 +75,7 @@ class Server:
             msg_len = len(msg)
             data = chr(msg_len) + chr(status) + str(is_chat) + msg
             c_socket.sendall(data.encode())
-    
+
     def create_user_in_csv(self, name): # TODO: need to store more info than this? need store addr? need file unique to port?
         with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['create', name])
@@ -249,11 +249,14 @@ class Server:
         return c_name, request
 
     def send_backups_message(self, request, c_name):
-        for port in self.server_sockets:
-            if self.primary and self.server_sockets[port].active:
-                print('sent to port ' + str(port))
-                backup_request = request + "|" + str(c_name)
-                self.server_sockets[port].socket.sendall(backup_request.encode())
+        op = request.split('|')[0]
+        if op not in ['8', '9']:
+            for port in self.server_sockets:
+                # TODO: change to self.server_ports
+                if self.primary and self.server_sockets[port].active:
+                    print('sent to port ' + str(port))
+                    backup_request = request + "|" + str(c_name)
+                    self.server_sockets[port].socket.sendall(backup_request.encode())
 
     def on_server_shutdown(self, addr):
         if isinstance(addr, int):
@@ -271,10 +274,75 @@ class Server:
             self.primary = True
             print('PRIMARY HERE')
 
+    def csv_to_list(self, filename):
+        rows = []
+        with open(filename, 'r', newline='') as f:
+            csvreader = csv.reader(f)
+            for row in csvreader:
+                rows.append(','.join(row))
+        return rows
+
+    def sync_backups(self):
+        time.sleep(2)
+        for port in self.server_ports:
+            if port in self.server_sockets and self.server_sockets[port].active:
+                # send length of users and msgs table to servers
+                for table_type in ['users', 'msgs']:
+                    filename = f'{DIR}/{table_type}_table_{self.port}.csv'
+                    length = len(self.csv_to_list(filename))
+                    msg_length = f'8|{length}|{self.port}|{table_type}'
+                    self.server_sockets[port].socket.sendall(msg_length.encode())
+
+    def sync_csv(self, msg):
+        # parse table type and messages
+        table_type, msg_lst = msg.split('|', 1)
+        msg_lst = msg.split('|')
+
+        # parse each message
+        for string in msg_lst:
+            row = string.split(',')
+
+            # append to users table
+            if table_type == 'users':
+                if row[0] == 'create':
+                    self.create_user_in_csv(row[1])
+                if row[0] == 'delete':
+                    self.delete_user_in_csv(row[1])
+
+            # append to msgs table
+            elif table_type == 'msgs':
+                if row[0] == 'queue':
+                    self.queue_msg_in_csv(row[1], row[2], row[3])
+                elif row[0] == 'clear':
+                    self.clear_msgs_in_csv(row[1])
+
+        self.load_users_from_csv()
+        self.load_msgs_from_csv()
+
+
+    def compare_csv(self, msg):
+        # parse table lengths, ports, table type
+        length, sender_port, table_type = msg.split('|')
+        length = int(length)
+        sender_port = int(sender_port)
+        filename = f'{DIR}/{table_type}_table_{self.port}.csv'
+        lst = self.csv_to_list(filename)
+
+        # if own table is greater in size, send missing data to backup
+        if len(lst) > length:
+            messages = lst[length:len(lst)]
+            str_messages = '|'.join(messages)
+            unsynced_messages = f'9|{table_type}|{str_messages}'
+            self.server_sockets[sender_port].socket.sendall(unsynced_messages.encode())
+
+
     # Threaded execution for each client
     def on_new_client(self, c_socket, addr):
         c_name = None
         client = None
+
+        if isinstance(addr, int):
+            self.sync_backups()
 
         try:
             while True:
@@ -285,15 +353,17 @@ class Server:
                     c_socket.close()
                     break
 
-                # if backup, parse message from primary
-                if not self.primary:
-                    # assume that no user is logged in
-                    c_name = None
-                    client = None
-                    c_name, request = self.parse_primary_message(request)
-                else:
-                    # pass on message to all connected backups
-                    self.send_backups_message(request, c_name)
+                # if message is not a sync message
+                if request.split('|')[0] not in ['8', '9']:
+                    # if backup, parse message from primary
+                    if not self.primary:
+                        # assume that no user is logged in
+                        c_name = None
+                        client = None
+                        c_name, request = self.parse_primary_message(request)
+                    else:
+                        # pass on message to all connected backups
+                        self.send_backups_message(request, c_name)
 
                 # Unpack data according to wire protocol
                 op, msg = request.split('|', 1) if '|' in request else (request, '')
@@ -372,6 +442,13 @@ class Server:
                     self.users[c_name].set_socket_addr(c_socket, addr)
                     self.users[c_name].active = True
 
+                elif op == '8':
+                    self.compare_csv(msg)
+
+                elif op == '9':
+                    self.sync_csv(msg)
+
+
                 # Request was malformed
                 else:
                     self.send_msg_to_client(c_socket, 1, 0, 'Invalid operation. Please input your request as [operation]|[params].')
@@ -411,8 +488,8 @@ class Server:
             backups = self.server_ports
             print('\nWaiting to connect with replicas...')
 
-            # Fault-tolerant system is created if backups are run within 3 seconds of the primary starting up
-            time.sleep(3)
+            # Fault-tolerant system is created if backups are run within 5 seconds of the primary starting up
+            time.sleep(5)
 
             for s_port in backups:
                 t = threading.Thread(target=self.connect_replicas, args=(s_port,))
