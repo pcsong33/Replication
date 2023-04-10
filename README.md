@@ -42,14 +42,14 @@ Responses from the server to a client are sent in the form `[message length][sta
     * The primary server listens to requests from the clients, and responds accordingly with messages following the wire protocol. 
     * The primary server passes chat messages between clients.
     * All servers keep a global dictionary of `User` objects, to keep track of all of the accounts created, socket connections, queued messages, etc.
-    * The primary server also passes all client requests to the secondary servers, in order for them to keep their internal state up-to-date.
-    * All servers also keep a commit log of users that have been created/deleted and messages that have been queued/cleared, in order for the current state of the system to be saved if everything goes down. Whenever a server is started up, it loads in user and queued message data from the commit logs, if they exist. These commit logs are in the `tables/` directory.
+    * The primary server passes all client requests to the secondary servers, in order for them to keep their internal state up-to-date.
+    * All servers keep a commit log of users that have been created/deleted and messages that have been queued/cleared, in order for the current state of the system to be saved if everything goes down. Whenever a server is started up, it loads in user and queued message data from the commit logs, if they exist. These commit logs are in the `tables/` directory.
 * `client.py` - Defines the `Client` class.
     * Connects to the primary server.
     * Runs a background thread to listen for and print messages from the server.
     * Takes in requests from the user via command-line input, which is packaged according to the wire protocol and sent to the server.
 * `replication-tests.py` - Unit tests. Run via `python3 replication-tests.py`. These tests are for testing the specific features/functions we added in this design assignment.
-* `tests.py` - More unit tests. To run the tests, you must 1) run `server.py`, 2) change `HOST` in `tests.py` to match the server, and finally 3) run `python3 tests.py`
+* `tests.py` - More unit tests. To run the tests, you must 1) run `server.py`, 2) change `HOST` in `tests.py` and `HOSTS` in `client.py` to match the server, and finally 3) run `python3 tests.py`
     * These tests are from our original assignment, which tests the functionality of the chat application itself.
     * The tests spawn `Client` objects connected to the server. These objects send requests to the server within the tests, and the tests check whether the responses from the server are as expected.
     * If a `Too many open files` error is received when running tests, run `ulimit -n 2048` to reconfigure the maximum number of open files.
@@ -62,22 +62,22 @@ When the system is started, all of the three servers connect to each other. By d
 ![architecture.png](wire_protocol_chat%2Fimages%2Farchitecture.png)
 
 #### Primary Server Shutdown + Leader Election:
-If the primary server shuts down at any point, all connections are broken except for the connect between the replicas left.
+If the primary server shuts down at any point, all connections are broken except for the connection between the replicas left.
 ![primary_disconnect.png](wire_protocol_chat%2Fimages%2Fprimary_disconnect.png)
 
 The secondary servers that are left elect a new leader to become the primary server. Our election simply chooses the server with the lowest port number as the leader.
 ![leader_election.png](wire_protocol_chat%2Fimages%2Fleader_election.png)
 
 #### Reconnect to New Primary:
-Once a new leader has been elected as primary, the clients now connect to this new primary server. This new primary server's internal state has all of data the primary server had before it shut down.
+Once a new leader has been elected as primary, the clients now connect to this new primary server. This new primary server's internal state has all of data the primary server had before it shut down, since the client requests were being passed from the primary to secondarys originally.
 ![reconnect.png](wire_protocol_chat%2Fimages%2Freconnect.png)
-Then, the system can proceed as it did before with this new primary handling and responding to its requests. From the user perspective, they cannot detect this change, as this new primary has all of the accurate data stored and so the chat application just proceeds as it normally would.
+Then, the system can proceed as usual with this new primary now handling and responding to client requests. From the user perspective, they cannot detect this change, as this new primary has all of the accurate data stored and so the chat application just proceeds as it normally would.
 
-Note that our system would repeat the same process if the current primary shuts down again: it elects the last server remaining as the leader, and the clients now connect to this server. Thus, our system is 2-fault tolerant, since it can run normally when up to two servers shut down. Note that if at any point one of the secondary servers shuts down instead, its connections to the other servers are just dropped but no leader election has to occur since the primary server remains intact.
+Our system will repeat the same process if the current primary shuts down again: it elects the last server remaining as the leader, and the clients now connect to this server. Thus, our system is 2-fault tolerant, since it can run normally when up to two servers shut down. Note that if at any point one of the secondary servers shuts down instead of the primary, its connections to the other servers are just dropped but no leader election has to occur since the primary server remains intact.
 
 ### Persistence
-Any time a request is received by a server that creates or deletes a user, this request is logged in the `user_table_{port}.csv` file in the `tables/` directory by the server. Then, if this server is shut down and started up again, upon start up, the server loads the existing users into it's internal state from the CSV file. For example, if the file lines are `create,bob`, `create,alice`, `delete,bob`, the server will iterate through these lines and perform these actions on its internal state, ending up with just `alice` as an existing user.
+Any time a request is received by a server that creates or deletes a user, this request is logged in the `user_table_[port].csv` file in the `tables/` directory by the server. Then, if this server is shut down and started up again, upon start up, the server loads the existing users into its internal state from the CSV file. For example, if the CSV file lines are `create,bob`, `create,alice`, `delete,bob`, the server will iterate through these lines and perform these actions on its internal state, ending up with just `alice` as an existing user.
 
-Similarly, any time a request is received that queues a message to a user or clears the queued messages for a user (i.e. the user logs in), this request is logged in the `msgs_table_{port}.csv` file in the `tables/` directory by the server. These queued messages are also loaded upon initialization. The lines in the CSV are formatted as `queue,receiver,sender,message` or `clear,receiver`. For example, if the file lines are `queue,bob,alice,hi`, `queue,bob,alice,hello`, `queue,alice,joe,what's up`, `clear,alice`, then the queued messages that will be loaded into the server's initial state are two messages queued to bob from alice ("hi" and "hello").
+Similarly, any time a request is received that queues a message to a user or clears the queued messages for a user (i.e. the user logs in), this request is logged in the `msgs_table_[port].csv` file in the `tables/` directory by the server. These queued messages are also loaded upon initialization. The lines in the CSV are formatted as `queue,[receiver],[sender],[message]` or `clear,[receiver]`. For example, if the file lines are `queue,bob,alice,hi`, `queue,bob,alice,hello`, `queue,alice,joe,what's up`, `clear,alice`, then the queued messages that will be loaded into the server's initial state are two messages queued to bob from alice ("hi" and "hello"). 
 
-Keeping these "commit log" tables and loading the commits in upon initialization allow our user and message store to be persisted, even if the whole system goes down and is restarted again.
+Keeping these "commit log" tables and loading the commits in upon initialization allow our user and message store to be persisted, even if the whole system goes down and is restarted again. Conceptually, these tables serve as a backup for our server's current internal state.
