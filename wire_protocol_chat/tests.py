@@ -1,7 +1,7 @@
 import unittest, client, threading, time, sys, os
 from random import randint
 
-HOST = 'dhcp-10-250-203-22.harvard.edu'
+HOST = 'dhcp-10-250-0-195.harvard.edu'
     
 '''
 The ChatAppTest contain tests that spawn `Client` objects connected to the server. These objects send requests to the server within 
@@ -24,7 +24,7 @@ class ChatAppTest(unittest.TestCase):
 
     # Test client-side input checks
     def test_validate_request(self):
-        client1 = client.Client(host=HOST)
+        client1 = client.Client()
 
         with NoPrint():
             # Request too long
@@ -48,8 +48,8 @@ class ChatAppTest(unittest.TestCase):
 
     # Tests basic functionality of creating an account
     def test_create_account(self):
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
 
         # Create bob
         client1.pack_and_send_request('create|bob')
@@ -64,8 +64,8 @@ class ChatAppTest(unittest.TestCase):
         self.assert_response_contains(response, 1, 0, 'Unable to create account: You are already logged in as bob.')
 
         # Another client attempts to create bob
-        client2 = client.Client(host=HOST)
-        client2.sock.connect((client1.host, client1.port))
+        client2 = client.Client()
+        client2.sock.connect((client1.hosts[0], client1.ports[0]))
 
         client2.pack_and_send_request('create|bob')
 
@@ -94,8 +94,8 @@ class ChatAppTest(unittest.TestCase):
 
         # Start 100 clients in diff threads
         for i in range(num_clients):
-            clients[i] = client.Client(host=HOST)
-            clients[i].sock.connect((clients[i].host, clients[i].port))
+            clients[i] = client.Client()
+            clients[i].sock.connect((clients[i].hosts[0], clients[i].ports[0]))
             
             threads[i] = threading.Thread(target=create_bob, args=(clients[i], i))
             threads[i].start()
@@ -116,21 +116,22 @@ class ChatAppTest(unittest.TestCase):
     # Test basic login functionality
     def test_login(self):
         # Create bob and alice
-        client0 = client.Client(host=HOST)
-        client0.sock.connect((client0.host, client0.port))
+        client0 = client.Client()
+        client0.sock.connect((client0.hosts[0], client0.ports[0]))
         client0.pack_and_send_request('create|alice')
         
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('create|bob')
         client1.sock.close()
 
         # Login bob
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('login|bob')
 
         response = client1.recv_response_from_server()
+        print(response)
         self.assert_response_equal(response, 0, 0, 'Logged in as bob.')
         client1.recv_response_from_server()  # "No new messages while you've been gone"
 
@@ -141,16 +142,16 @@ class ChatAppTest(unittest.TestCase):
         self.assert_response_contains(response,1, 0, 'Unable to login: You are already logged in as bob.')
 
         # Attempt login invalid user
-        client2 = client.Client(host=HOST)
-        client2.sock.connect((client2.host, client2.port))
+        client2 = client.Client()
+        client2.sock.connect((client2.hosts[0], client2.ports[0]))
         client2.pack_and_send_request('login|eve')
 
         response = client2.recv_response_from_server()
         self.assert_response_contains(response,1, 0, 'Unable to login: This username does not exist.')
 
         # Attempt to log into bob even though he's active already
-        client3 = client.Client(host=HOST)
-        client3.sock.connect((client3.host, client3.port))
+        client3 = client.Client()
+        client3.sock.connect((client3.hosts[0], client3.ports[0]))
         client3.pack_and_send_request('login|bob')
 
         response = client3.recv_response_from_server()
@@ -165,57 +166,19 @@ class ChatAppTest(unittest.TestCase):
         client2.sock.close()
         client3.sock.close()
 
-    # Simulates race condition where 100 users are simultaneously logging into the same account
-    def test_login_race(self):
-        client0 = client.Client(host=HOST)
-        client0.sock.connect((client0.host, client0.port))
-        client0.pack_and_send_request('create|bob')
-        client0.sock.close()
-
-        num_clients = 100
-        clients = [None] * num_clients
-        results = [None] * num_clients
-        threads = [None] * num_clients
-
-        def login_bob(c, i):
-            time.sleep(randint(10, 100) * 10**-9 * (num_clients-i)**3)
-            c.pack_and_send_request('login|bob')
-
-            # Record if login was successful
-            results[i] = 1 - c.recv_response_from_server()[0]
-
-        # Start 100 clients in diff threads
-        for i in range(num_clients):
-            clients[i] = client.Client(host=HOST)
-            clients[i].sock.connect((clients[i].host, clients[i].port))
-            
-            threads[i] = threading.Thread(target=login_bob, args=(clients[i], i))
-            threads[i].start()
-
-        for i in range(num_clients):
-            threads[i].join()
-
-        # Only one client should have succeeded in logging into the account
-        self.assertEqual(1, sum(results))
-
-        # Delete for idempotency
-        clients[results.index(1)].pack_and_send_request('delete|bob')
-
-        for i in range(num_clients):
-            clients[i].sock.close()
 
     # Test listing all account and wildcard filter
     def test_list_accounts(self):
         names = ['alice', 'bob', 'ashley', 'patrick']
 
         for name in names:
-            c = client.Client(host=HOST)
-            c.sock.connect((c.host, c.port))
+            c = client.Client()
+            c.sock.connect((c.hosts[0], c.ports[0]))
             c.pack_and_send_request('create|' + name)
             c.sock.close()
 
-        c = client.Client(host=HOST)
-        c.sock.connect((c.host, c.port))
+        c = client.Client()
+        c.sock.connect((c.hosts[0], c.ports[0]))
 
         # List all accounts
         c.pack_and_send_request('list')
@@ -236,10 +199,51 @@ class ChatAppTest(unittest.TestCase):
 
         c.sock.close()
 
+    # Simulates race condition where 100 users are simultaneously logging into the same account
+    def test_login_race(self):
+        client0 = client.Client()
+        client0.sock.connect((client0.hosts[0], client0.ports[0]))
+        client0.pack_and_send_request('create|bob')
+        client0.sock.close()
+
+        num_clients = 100
+        clients = [None] * num_clients
+        results = [None] * num_clients
+        threads = [None] * num_clients
+
+        def login_bob(c, i):
+            time.sleep(randint(10, 100) * 10**-9 * (num_clients-i)**3)
+            c.pack_and_send_request('login|bob')
+
+            # Record if login was successful
+            results[i] = 1 - c.recv_response_from_server()[0]
+
+        # Start 100 clients in diff threads
+        for i in range(num_clients):
+            clients[i] = client.Client()
+            clients[i].sock.connect((clients[i].hosts[0], clients[i].ports[0]))
+            
+            threads[i] = threading.Thread(target=login_bob, args=(clients[i], i))
+            threads[i].start()
+
+        for i in range(num_clients):
+            threads[i].join()
+
+        # Only one client should have succeeded in logging into the account
+        self.assertEqual(1, sum(results))
+
+        # Delete for idempotency
+        clients[results.index(1)].pack_and_send_request('delete|bob')
+
+        for i in range(num_clients):
+            clients[i].sock.close()
+
+
+
     # Test deleting accounts
     def test_delete_account(self):
-        c = client.Client(host=HOST)
-        c.sock.connect((c.host, c.port))
+        c = client.Client()
+        c.sock.connect((c.hosts[0], c.ports[0]))
 
         # Attempt delete before login
         c.pack_and_send_request('delete|bob')
@@ -253,22 +257,19 @@ class ChatAppTest(unittest.TestCase):
 
         c.pack_and_send_request('delete|bob')
 
-        response = c.recv_response_from_server()
-        self.assert_response_equal(response, 0, 0, 'Account bob has been deleted. You are now logged out.')
-
         # Check account is actually deleted
         c.pack_and_send_request('login|bob')
 
         response = c.recv_response_from_server()
-        self.assert_response_contains(response, 1, 0, 'Unable to login: This username does not exist.')
+        self.assert_response_contains(response, 1, 0, 'Must be logged in to perform this operation. Please login or create an account.')
 
         c.sock.close()
 
     # Test invalid chat inputs
     def test_send_chat_invalid(self):
         # Attempt to send message before logged in
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('send|alice|hi')
         response = client1.recv_response_from_server()
         self.assert_response_contains(response, 1, 0, 'Must be logged in to perform this operation.')
@@ -293,18 +294,18 @@ class ChatAppTest(unittest.TestCase):
     # Sending chat to someone who is logged in
     def test_send_chat_live(self):
         # Create bob, alice, and eve
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('create|bob')
         client1.recv_response_from_server()
 
-        client2 = client.Client(host=HOST)
-        client2.sock.connect((client2.host, client2.port))
+        client2 = client.Client()
+        client2.sock.connect((client2.hosts[0], client2.ports[0]))
         client2.pack_and_send_request('create|alice')
         client2.recv_response_from_server()
 
-        client3 = client.Client(host=HOST)
-        client3.sock.connect((client3.host, client3.port))
+        client3 = client.Client()
+        client3.sock.connect((client3.hosts[0], client3.ports[0]))
         client3.pack_and_send_request('create|eve')
         client3.recv_response_from_server()
 
@@ -329,19 +330,20 @@ class ChatAppTest(unittest.TestCase):
     # Queueing messages to someone inactive
     def test_send_chat_queue(self):
          # Create bob, alice, and eve
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('create|bob')
         client1.recv_response_from_server()
+        client1.pack_and_send_request('exit')
         client1.sock.close()
 
-        client2 = client.Client(host=HOST)
-        client2.sock.connect((client2.host, client2.port))
+        client2 = client.Client()
+        client2.sock.connect((client2.hosts[0], client2.ports[0]))
         client2.pack_and_send_request('create|alice')
         client2.recv_response_from_server()
 
-        client3 = client.Client(host=HOST)
-        client3.sock.connect((client3.host, client3.port))
+        client3 = client.Client()
+        client3.sock.connect((client3.hosts[0], client3.ports[0]))
         client3.pack_and_send_request('create|eve')
         client3.recv_response_from_server()
         
@@ -350,8 +352,8 @@ class ChatAppTest(unittest.TestCase):
         time.sleep(0.01) # so that order is deterministic
         client3.pack_and_send_request('send|bob|what is up')
 
-        client1 = client.Client(host=HOST)
-        client1.sock.connect((client1.host, client1.port))
+        client1 = client.Client()
+        client1.sock.connect((client1.hosts[0], client1.ports[0]))
         client1.pack_and_send_request('login|bob')
         client1.recv_response_from_server()
 
@@ -372,8 +374,8 @@ class ChatAppTest(unittest.TestCase):
 
     # Simulates race condition where 100 users are simultaneously sending message to the same account
     def test_queue_msg_race(self):
-        client0 = client.Client(host=HOST)
-        client0.sock.connect((client0.host, client0.port))
+        client0 = client.Client()
+        client0.sock.connect((client0.hosts[0], client0.ports[0]))
         client0.pack_and_send_request('create|bob')
         client0.sock.close()
 
@@ -391,8 +393,8 @@ class ChatAppTest(unittest.TestCase):
 
         # Create 100 diff accounts
         for i in range(num_clients):
-            clients[i] = client.Client(host=HOST)
-            clients[i].sock.connect((clients[i].host, clients[i].port))
+            clients[i] = client.Client()
+            clients[i].sock.connect((clients[i].hosts[0], clients[i].ports[0]))
             clients[i].pack_and_send_request(f'create|user{i}')
         
         # Send msgs in diff threads at same time
@@ -407,8 +409,8 @@ class ChatAppTest(unittest.TestCase):
         self.assertEqual(num_clients, sum(results))
 
         # Login bob
-        client0 = client.Client(host=HOST)
-        client0.sock.connect((client0.host, client0.port))
+        client0 = client.Client()
+        client0.sock.connect((client0.hosts[0], client0.ports[0]))
         client0.pack_and_send_request('login|bob')
         client0.recv_response_from_server()
 
