@@ -85,18 +85,18 @@ class Server:
             csv.writer(csv_file).writerow(['delete', name])
 
     def load_users_from_csv(self):
-        users = {}
+        self.users = {}
 
         with open(f'{DIR}/users_table_{self.port}.csv', 'r') as csv_file:
             for line in csv_file:
                 line = line.strip('\n').split(',')
                 name = line[1]
                 if line[0] == 'create':
-                    users[name] = User(name)
+                    self.users[name] = User(name)
                 elif line[0] == 'delete':
-                    users.pop(name)
+                    self.users.pop(name)
 
-        return users
+        return self.users
     
     def queue_msg_in_csv(self, receiver, sender, msg):
         with open(f'{DIR}/msgs_table_{self.port}.csv', 'a') as csv_file:
@@ -317,7 +317,7 @@ class Server:
                 elif row[0] == 'clear':
                     self.clear_msgs_in_csv(row[1])
 
-        self.load_users_from_csv()
+        self.users = self.load_users_from_csv()
         self.load_msgs_from_csv()
 
 
