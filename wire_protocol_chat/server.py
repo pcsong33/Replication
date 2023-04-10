@@ -10,7 +10,7 @@ DIR = 'tables'
 PORTS = {1538, 2538, 3538}
 PORT_TO_HOST = {
     1538: 'dhcp-10-250-0-195.harvard.edu',
-    2538: 'dhcp-10-250-0-195.harvard.edu',
+    2538: 'dhcp-10-250-224-250.harvard.edu',
     3538: 'dhcp-10-250-0-195.harvard.edu'
 }
 
@@ -292,6 +292,7 @@ class Server:
                     length = len(self.csv_to_list(filename))
                     msg_length = f'8|{length}|{self.port}|{table_type}'
                     self.server_sockets[port].socket.sendall(msg_length.encode())
+                    time.sleep(0.001)
 
     def sync_csv(self, msg):
         # parse table type and messages
@@ -322,6 +323,7 @@ class Server:
 
     def compare_csv(self, msg):
         # parse table lengths, ports, table type
+        print(msg)
         length, sender_port, table_type = msg.split('|')
         length = int(length)
         sender_port = int(sender_port)
@@ -334,6 +336,7 @@ class Server:
             str_messages = '|'.join(messages)
             unsynced_messages = f'9|{table_type}|{str_messages}'
             self.server_sockets[sender_port].socket.sendall(unsynced_messages.encode())
+            time.sleep(0.001)
 
 
     # Threaded execution for each client
