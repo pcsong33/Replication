@@ -1,16 +1,16 @@
 # CS262 Engineering Notebook
 
 ## 4/9/2023
-2-fault tolerance has been partly implemented. In order to test,
-run three instances of the server.py file:
+2-fault tolerance has been implemented. In order to test, run three instances of the server.py file:
 - `python server.py primary 1538`
 - `python server.py secondary 2538`
 - `python server.py secondary 3538`
-Hasn't been thoroughly tested but seems to work.
 
 Additionally, after a server goes down, once it comes back up, it will load the users from the csv corresponding to it. Possibly some syncing issues, also not sure if we want persistence only when the whole system goes down?
 
-Think I fixed the logging out bug
+Think I fixed the logging out bug by passing the exit message to the backup servers whenever a client shuts down unexpectedly or exits.
+
+We have commit logs implemented for users being created/deleted and messages being queued/cleared. These are loaded into the users dict for the server object upon initilaization so that the datat can be persisted.
 
 
 ## 4/8/2023
@@ -35,14 +35,15 @@ Bugs
 - When the primary server is shut down while a client is connected and logged in that user becomes logged out
 
 TODOs
-- Handle scenario when both primary and secondary go down.
+- ~~Handle scenario when both primary and secondary go down.~~
 - ~~Implement a function that logs queued messages into a csv file~~
 - ~~Implement a function that is able to read from the user_table and queued_messages csv files and is able to recover data.~~
 - ~~Add another secondary (port 3538) to make system 2-fault-tolerant~~
-- make sure replicas work across machines
+- ~~make sure replicas work across machines~~
 - ~~delete users from user table when user is deleted (we'd prob just have to read and overwrite the entire CSV???)~~
 - ~~for queued msgs, also seems like there would be expensive deletion operations, which kinda sucks. -> nope, commit logs!~~
 - unit tests
+- commenting files more
 
 
 ## 4/7/2023
