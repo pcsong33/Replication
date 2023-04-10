@@ -32,18 +32,16 @@ to become the primary one and handle requests normally.
 continue to field requests.
 
 Bugs
-- When the primary server is shut down while a client is connected and logged in 
-that user becomes logged out
+- When the primary server is shut down while a client is connected and logged in that user becomes logged out
 
 TODOs
 - Handle scenario when both primary and secondary go down.
-- Implement a function that logs queued messages into a csv file
-- Implement a function that is able to read from the user_table and queued_messages csv files
-and is able to recover data. 
-- Add another secondary (port 3538) to make system 2-fault-tolerant
+- ~~Implement a function that logs queued messages into a csv file~~
+- ~~Implement a function that is able to read from the user_table and queued_messages csv files and is able to recover data.~~
+- ~~Add another secondary (port 3538) to make system 2-fault-tolerant~~
 - make sure replicas work across machines
-- delete users from user table when user is deleted (we'd prob just have to read and overwrite the entire CSV???)
-- for qued msgs, also seems like there would be expensive deletion operations, which kinda sucks.
+- ~~delete users from user table when user is deleted (we'd prob just have to read and overwrite the entire CSV???)~~
+- ~~for queued msgs, also seems like there would be expensive deletion operations, which kinda sucks. -> nope, commit logs!~~
 - unit tests
 
 

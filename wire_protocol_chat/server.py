@@ -7,6 +7,12 @@ import time
 import os.path
 
 DIR = 'tables'
+PORTS = {1538, 2538, 3538}
+PORT_TO_HOST = {
+    1538: 'dhcp-10-250-0-195.harvard.edu',
+    2538: 'dhcp-10-250-224-250.harvard.edu',
+    3538: 'dhcp-10-250-0-195.harvard.edu'
+}
 
 '''
 A User object represents an account that is created. It keeps track of the username, whether the user 
@@ -51,7 +57,7 @@ to respond and pass chat messages between clients. It keeps a global dictionary 
 class Server:
     def __init__(self, primary=True, port=1538):
         self.port = port
-        self.server_ports = {1538, 2538, 3538} - {port}
+        self.server_ports = PORTS - {port}
 
         # can maybe utilize User object instead of dict
         self.server_sockets = dict()
@@ -369,7 +375,7 @@ class Server:
     def connect_replicas(self, s_port):
         try:
             sock = socket.socket()
-            sock.connect((self.host, s_port)) # TODO: fix to diff host
+            sock.connect((PORT_TO_HOST[s_port], s_port))
             self.server_sockets[s_port] = User(s_port, sock, active=True, addr=s_port)
             print(f'\nConnected with replica on port {s_port}!')
             t = threading.Thread(target=self.on_new_client, args=(sock, s_port))
