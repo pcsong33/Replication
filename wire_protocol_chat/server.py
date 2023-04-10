@@ -76,14 +76,17 @@ class Server:
             data = chr(msg_len) + chr(status) + str(is_chat) + msg
             c_socket.sendall(data.encode())
 
-    def create_user_in_csv(self, name): # TODO: need to store more info than this? need store addr? need file unique to port?
+    # Append user creation to users CSV
+    def create_user_in_csv(self, name):
         with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['create', name])
 
+    # Append user deletion to users CSV
     def delete_user_in_csv(self, name):
         with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['delete', name])
 
+    # Loading the users into the server's internal users dict on initialization
     def load_users_from_csv(self):
         self.users = {}
 
@@ -98,14 +101,17 @@ class Server:
 
         return self.users
     
+    # Append messgae queue to msg CSV
     def queue_msg_in_csv(self, receiver, sender, msg):
         with open(f'{DIR}/msgs_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['queue', receiver, sender, msg])
 
+    # Append messgae clearing to msg CSV
     def clear_msgs_in_csv(self, name):
         with open(f'{DIR}/msgs_table_{self.port}.csv', 'a') as csv_file:
             csv.writer(csv_file).writerow(['clear', name])
 
+    # Loading the queued msgs into the server's users dict on initialization
     def load_msgs_from_csv(self):
         with open(f'{DIR}/msgs_table_{self.port}.csv', 'r') as csv_file:
             for line in csv_file:
@@ -239,6 +245,7 @@ class Server:
 
             return 1
 
+    # Parsing message from primary server on secondary server
     def parse_primary_message(self, request):
         # find client logged into primary server
         c_name_rec = request.split('|')[-1]
@@ -248,11 +255,11 @@ class Server:
         request = "|".join(request.split('|')[:-1])
         return c_name, request
 
+    # For propagating messages from primary to secondarys
     def send_backups_message(self, request, c_name):
         op = request.split('|')[0]
         if op not in ['8', '9']:
             for port in self.server_sockets:
-                # TODO: change to self.server_ports
                 if self.primary and self.server_sockets[port].active:
                     print('sent to port ' + str(port))
                     backup_request = request + "|" + str(c_name)
@@ -282,6 +289,7 @@ class Server:
                 rows.append(','.join(row))
         return rows
 
+    # To broadcast the length of the server's CSV files to other servers
     def sync_backups(self):
         time.sleep(2)
         for port in self.server_ports:
@@ -294,6 +302,7 @@ class Server:
                     msg_length = f'8|{length}|{self.port}|{table_type}'
                     self.server_sockets[port].socket.sendall(msg_length.encode())
 
+    # Appends the missing messages sent from the most up-to-date server to the server's table
     def sync_csv(self, msg):
         # parse table type and messages
         table_type, msg_lst = msg.split('|', 1)
@@ -320,7 +329,8 @@ class Server:
         self.users = self.load_users_from_csv()
         self.load_msgs_from_csv()
 
-
+    # When a server receives a CSV length from a different server, it compares the length to its own table.
+    # If its length is longer, it sends the other server the rows in the CSV that it's missing.
     def compare_csv(self, msg):
         # parse table lengths, ports, table type
         msg = msg.split('|')
@@ -445,9 +455,11 @@ class Server:
                     self.users[c_name].set_socket_addr(c_socket, addr)
                     self.users[c_name].active = True
 
+                # Received a CSV length broadcast
                 elif op == '8':
                     self.compare_csv(msg)
 
+                # Received missing CSV rows from another server
                 elif op == '9':
                     self.sync_csv(msg)
 
