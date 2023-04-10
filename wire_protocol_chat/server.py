@@ -9,9 +9,9 @@ import os.path
 DIR = 'tables'
 PORTS = {1538, 2538, 3538}
 PORT_TO_HOST = {
-    1538: 'dhcp-10-250-224-250.harvard.edu',
+    1538: 'dhcp-10-250-0-195.harvard.edu',
     2538: 'dhcp-10-250-224-250.harvard.edu',
-    3538: 'dhcp-10-250-224-250.harvard.edu'
+    3538: 'dhcp-10-250-0-195.harvard.edu'
 }
 
 '''
