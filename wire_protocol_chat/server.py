@@ -78,7 +78,7 @@ class Server:
     
     def create_user_in_csv(self, name, addr): # TODO: need to store more info than this? need store addr? need file unique to port?
         with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
-            csv.writer(csv_file).writerow(['create', name, addr])
+            csv.writer(csv_file).writerow(['create', name])
 
     def delete_user_in_csv(self, name):
         with open(f'{DIR}/users_table_{self.port}.csv', 'a') as csv_file:
@@ -91,8 +91,6 @@ class Server:
             for line in csv_file:
                 line = line.strip('\n').split(',')
                 name = line[1]
-                # addr = tuple(line[2].strip('\"').split(','))
-
                 if line[0] == 'create':
                     users[name] = User(name)
                 elif line[0] == 'delete':
