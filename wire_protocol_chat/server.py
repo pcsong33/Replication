@@ -338,8 +338,8 @@ class Server:
                     
                 # Delete account
                 elif op == '5':
-                    # Must be logged in
-                    if not client:
+                    # Must be logged in for primary
+                    if self.primary and not client:
                         self.send_msg_to_client(c_socket, 1, 0, 'Must be logged in to perform this operation. Please login or create an account.')
                         continue
                     
