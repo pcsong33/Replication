@@ -367,7 +367,7 @@ class Server:
                 
                 # Logging into new primary server
                 elif op == '7':
-                    c_name = msg
+                    c_name = msg.split('|')[0]
                     client = self.users[c_name]
                     self.users[c_name].set_socket_addr(c_socket, addr)
                     self.users[c_name].active = True
