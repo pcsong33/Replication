@@ -288,11 +288,11 @@ class Server:
             if port in self.server_sockets and self.server_sockets[port].active:
                 # send length of users and msgs table to servers
                 for table_type in ['users', 'msgs']:
+                    time.sleep(0.001)
                     filename = f'{DIR}/{table_type}_table_{self.port}.csv'
                     length = len(self.csv_to_list(filename))
                     msg_length = f'8|{length}|{self.port}|{table_type}'
                     self.server_sockets[port].socket.sendall(msg_length.encode())
-                    time.sleep(0.001)
 
     def sync_csv(self, msg):
         # parse table type and messages
@@ -332,11 +332,11 @@ class Server:
 
         # if own table is greater in size, send missing data to backup
         if len(lst) > length:
+            time.sleep(0.001)
             messages = lst[length:len(lst)]
             str_messages = '|'.join(messages)
             unsynced_messages = f'9|{table_type}|{str_messages}'
             self.server_sockets[sender_port].socket.sendall(unsynced_messages.encode())
-            time.sleep(0.001)
 
 
     # Threaded execution for each client
